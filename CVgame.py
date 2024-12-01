@@ -1,20 +1,32 @@
 import mediapipe as mp
 import cv2
-import numpy as np
 import time
-from mediapipe.framework.formats import landmark_pb2
 import random
+from playsound import playsound
 
 mp_drawing = mp.solutions.drawing_utils
 mp_hands = mp.solutions.hands
-score = 0
 
+score = 0
 x_enemy = random.randint(50, 600)
 y_enemy = random.randint(50, 400)
+enemy_color = (0, 255, 0)
 
+start_time = time.time()
+time_limit = 30  # Game duration
+last_move_time = time.time()
+
+# Sound functions
+def play_score_sound():
+    playsound('score.mp3')
+
+def play_obstacle_sound():
+    playsound('obstacle.mp3')
+
+# Game Functions
 def enemy(image):
-    global x_enemy, y_enemy, score
-    cv2.circle(image, (x_enemy, y_enemy), 25, (0, 200, 0), 5)
+    global x_enemy, y_enemy, enemy_color
+    cv2.circle(image, (x_enemy, y_enemy), 25, enemy_color, -1)
 
 video = cv2.VideoCapture(0)
 with mp_hands.Hands(min_detection_confidence=0.8, min_tracking_confidence=0.5) as hands:
@@ -24,55 +36,47 @@ with mp_hands.Hands(min_detection_confidence=0.8, min_tracking_confidence=0.5) a
         image = cv2.flip(image, 1)
         imageHeight, imageWidth, _ = image.shape
         results = hands.process(image)
-
         image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        color = (255, 0, 255)
-        cv2.putText(image, "Score", (480, 30), font, 1, color, 4, cv2.LINE_AA)
-        cv2.putText(image, str(score), (590, 30), font, 1, color, 4, cv2.LINE_AA)
+        # Timer and Score Display
+        remaining_time = int(time_limit - (time.time() - start_time))
+        cv2.putText(image, f"Time: {remaining_time}s", (30, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+        cv2.putText(image, f"Score: {score}", (30, 70), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
 
-        # Draw enemy circle
+        if remaining_time <= 0:
+            print(f"Game Over! Final Score: {score}")
+            break
+
+        # Move Enemy Randomly
+        if time.time() - last_move_time > 1:
+            x_enemy = random.randint(50, 600)
+            y_enemy = random.randint(50, 400)
+            last_move_time = time.time()
+
+        # Draw Enemy
         enemy(image)
 
         if results.multi_hand_landmarks:
             for hand in results.multi_hand_landmarks:
-                mp_drawing.draw_landmarks(
-                    image,
-                    hand,
-                    mp_hands.HAND_CONNECTIONS,
-                    mp_drawing.DrawingSpec(color=(121, 22, 76), thickness=2, circle_radius=2),
-                )
-
                 for point in mp_hands.HandLandmark:
-                    normalizedLandmark = hand.landmark[point]
-                    pixelCoordinatesLandmark = mp_drawing._normalized_to_pixel_coordinates(
-                        normalizedLandmark.x, normalizedLandmark.y, imageWidth, imageHeight
-                    )
-
                     if point == mp_hands.HandLandmark.INDEX_FINGER_TIP:
-                        try:
-                            cv2.circle(
-                                image,
-                                (pixelCoordinatesLandmark[0], pixelCoordinatesLandmark[1]),
-                                25,
-                                (0, 200, 0),
-                                5,
-                            )
-                            if abs(pixelCoordinatesLandmark[0] - x_enemy) < 10 and abs(
-                                pixelCoordinatesLandmark[1] - y_enemy
-                            ) < 10:
-                                print("found")
+                        normalizedLandmark = hand.landmark[point]
+                        pixelCoordinatesLandmark = mp_drawing._normalized_to_pixel_coordinates(
+                            normalizedLandmark.x, normalizedLandmark.y, imageWidth, imageHeight
+                        )
+                        if pixelCoordinatesLandmark:
+                            cv2.circle(image, (pixelCoordinatesLandmark[0], pixelCoordinatesLandmark[1]), 15, (255, 0, 0), -1)
+                            if abs(pixelCoordinatesLandmark[0] - x_enemy) < 10 and abs(pixelCoordinatesLandmark[1] - y_enemy) < 10:
+                                play_score_sound()
+                                score += 1
                                 x_enemy = random.randint(50, 600)
                                 y_enemy = random.randint(50, 400)
-                                score += 1
-                        except:
-                            pass
+                                enemy_color = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
 
-        cv2.imshow("Hand Tracking", image)
+        cv2.imshow("Hand Tracking Game", image)
 
         if cv2.waitKey(10) & 0xFF == ord("q"):
-            print(score)
+            print(f"Final Score: {score}")
             break
 
 video.release()
